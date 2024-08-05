@@ -144,13 +144,9 @@
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClCompile Include="main.c" />
-    <ClCompile Include="platform_linux.c" />
-    <ClCompile Include="platform_win64.c" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="platform.h" />
-    <ClInclude Include="platform_linux.h" />
-    <ClInclude Include="platform_win64.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
