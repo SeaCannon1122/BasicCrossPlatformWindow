@@ -1,6 +1,8 @@
 #ifndef PLATFORM_H
 #define PLATFORM_H
 
+#include <stdbool.h>
+
 struct window_state {
 	void* window_handle;
 	int window_width;
@@ -24,6 +26,8 @@ double get_time();
 
 char get_key_state(int key);
 
+bool is_window_active(struct window_state* state);
+
 void draw_to_window(struct window_state* ws, unsigned int* buffer, int width, int height);
 
 void* create_thread(void* address, void* args);
@@ -40,7 +44,6 @@ void Entry();
 
 #include <stdio.h>
 #include <stdlib.h>
-#include <stdbool.h>
 
 #if defined(_WIN64)
 
@@ -229,6 +232,8 @@ void WindowControl() {
 
 		msg_check = false;
 
+		//creating window
+
 		if (next_window.done_flag == false) {
 			int name_length = 0;
 
@@ -409,46 +414,39 @@ int WINAPI WinMain(
 #define KEY_ARROW_RIGHT XK_Right
 #define KEY_ARROW_UP XK_Up
 #define KEY_ARROW_DOWN XK_Down
+#define KEY_MOUSE_LEFT 0x1234
+#define KEY_MOUSE_RIGHT 0x1236
 
-//void show_console_window();
+//char get_key_state(int key);
 
-//void hide_console_window();
+struct window_info {
+	Window window;
+	bool active;
+	struct window_state state;
+};
 
-void set_console_cursor_position(int x, int y);
+struct window_info** window_infos;
 
-double get_time();
-
-char get_key_state(int key);
-
-void draw_to_window(struct window_state* ws, unsigned int* buffer, int width, int height);
-
-void* create_thread(void* address, void* args);
-
-void close_window(struct window_state* state);
-
-void join_thread(void* thread_handle);
-
-struct point2d_int get_mouse_cursor_position(struct window_state* state);
-
-struct window_state* create_window(int posx, int posy, int width, int height, unsigned char* name);
-
-bool active = true;
-
-struct window_state window_state;
+int window_infos_length = 0;
+int max_window_infos = 256;
 
 Display* display;
-Window window;
-Atom wmDeleteMessage;
-XImage* ximage;
 int screen;
-unsigned int* image_buffer;
+Atom wm_delete_window;
 
-int max_width;
-int max_height;
-
-pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
+bool msg_check = false;
+bool window_infos_reorder = false;
+bool running;
 
 bool keyStates[256] = { 0 };
+
+void show_console_window() {
+	return;
+}
+
+void hide_console_window() {
+	return;
+}
 
 void sleep_for_ms(unsigned int _time_in_milliseconds) {
 	usleep(_time_in_milliseconds * 1000);
@@ -475,15 +473,16 @@ void set_console_cursor_position(int x, int y) {
 	// X11 does not have direct console cursor manipulation; this is a placeholder
 }
 
-void draw_to_window(unsigned int* buffer, int width, int height) {
+void draw_to_window(struct window_state* ws, unsigned int* buffer, int width, int height) {
 
-	for (int i = 0; i < width && i < max_width; i++) {
-		for (int j = 0; j < height && j < max_height; j++) image_buffer[i + j * max_width] = buffer[i + (height - j - 1) * width];
-	}
-
-	XPutImage(display, window, DefaultGC(display, screen), ximage, 0, 0, 0, 0, width, height);
+	XImage* image = XCreateImage(display, DefaultVisual(display, screen), DefaultDepth(display, screen), ZPixmap, 0, (char*)buffer, width, height, 32, 0);
+	XPutImage(display, ((struct window_info*) ws->window_handle)->window, DefaultGC(display, screen), image, 0, 0, 0, 0, width, height);
+	XDestroyImage(image);
 }
 
+bool is_window_active(struct window_state* state) {
+	return ((struct window_info*)state->window_handle)->active;
+}
 
 char get_key_state(int key) {
 	char keys[32];
@@ -498,31 +497,116 @@ char get_key_state(int key) {
 	return (keys[byteIndex] & (1 << bitIndex) ? 0b0001 : 0b0000);
 }
 
+struct point2d_int get_mouse_cursor_position(struct window_state* state) {
+	Window root, child;
+	int root_x, root_y;
+	int win_x, win_y;
+	unsigned int mask;
+
+	XQueryPointer(display, ((struct window_info*)state->window_handle)->window, &root, &child, &root_x, &root_y, &win_x, &win_y, &mask);
+
+	struct point2d_int pos = {win_x, state->window_height - win_y - 1}; 
+
+	return pos;
+}
+
+struct window_state* create_window(int posx, int posy, int width, int height, unsigned char* name) {
+
+	if (window_infos_length == max_window_infos) {
+		struct window_info** temp = window_infos;
+		window_infos = malloc(sizeof(void*) * (max_window_infos + 256));
+		for (int i = 0; i < max_window_infos; i++) window_infos[i] = temp[i];
+		max_window_infos += 256;
+		free(temp);
+	}
+
+	window_infos[window_infos_length] = (struct window_info*)malloc(sizeof(struct window_info));
+
+	Window window = XCreateSimpleWindow(display, RootWindow(display, screen), posx, posy, width, height, 1, BlackPixel(display, screen), WhitePixel(display, screen));
+
+	*window_infos[window_infos_length] = (struct window_info) {
+		window,
+		true,
+		(struct window_state) {
+			window_infos[window_infos_length], width, height
+		}
+	};
+
+	XSelectInput(display, window, ExposureMask | KeyPressMask | KeyReleaseMask | StructureNotifyMask);
+	XStoreName(display, window, name);
+	XSetWMProtocols(display, window, &wm_delete_window, 1);
+	XMapWindow(display, window);
+	window_infos_length++;
+
+	return &(window_infos[window_infos_length - 1]->state);
+}
+
+void close_window(struct window_state* state) {
+	if (is_window_active(state)) XDestroyWindow(display, ((struct window_info*) state->window_handle)->window);
+	while (((struct window_info*)state->window_handle)->active) sleep_for_ms(1);
+
+	window_infos_reorder = true;
+
+	while (msg_check) usleep(10);
+
+	int index = 0;
+
+	for (; index < window_infos_length && window_infos[index] != state->window_handle; index++);
+
+	free(window_infos[index]);
+
+	window_infos_length--;
+
+	for (int i = index; i < window_infos_length; i++) {
+		window_infos[i] = window_infos[i + 1];
+	}
+
+	window_infos_reorder = false;
+}
+
 void WindowControl() {
 	XEvent event;
-	while (active) {
+	while (running) {
+
 		while (XPending(display)) {
+
+			msg_check = true;
+
+			while (window_infos_reorder) usleep(10);
+
 			XNextEvent(display, &event);
+			
+			int index = 0;
+
+			for(; index < window_infos_length && window_infos[index]->window != event.xany.window; index++);
+			
 			switch (event.type) {
-			case ConfigureNotify:
-				window_state.window_width = clamp_int(event.xconfigure.width, 0, max_width);
-				window_state.window_height = clamp_int(event.xconfigure.height, 0, max_height);
-				break;
-			case ClientMessage:
-				if ((Atom)event.xclient.data.l[0] == wmDeleteMessage) {
-					active = false;
-				}
+				case ConfigureNotify:
+					window_infos[index]->state.window_width = event.xconfigure.width;
+					window_infos[index]->state.window_height = event.xconfigure.height;
+					break;
+				case ClientMessage:
+					if ((Atom)event.xclient.data.l[0] == wm_delete_window) {
+						window_infos[index]->active = false;
+						XDestroyWindow(display, window_infos[index]->window);
+					}
+
 			}
+
+			msg_check = false;
 
 		}
 
 		sleep_for_ms(10);
 	}
 
-	printf("Linux: received stop signal\n");
 	return;
 }
 
+void Entry_thread_function() {
+	Entry();
+	running = false;
+}
 
 int main(int argc, char* argv[]) {
 	XInitThreads();
@@ -535,38 +619,22 @@ int main(int argc, char* argv[]) {
 
 	screen = DefaultScreen(display);
 
-	max_width = DisplayWidth(display, screen);
-	max_height = DisplayHeight(display, screen);
+	wm_delete_window = XInternAtom(display, "WM_DELETE_WINDOW", False);
 
-	window = XCreateSimpleWindow(display, RootWindow(display, screen), 10, 10, initial_width, initial_height, 1, BlackPixel(display, screen), WhitePixel(display, screen));
-	XSelectInput(display, window, ExposureMask | KeyPressMask | KeyReleaseMask | StructureNotifyMask);
-	XStoreName(display, window, display_name);
-	wmDeleteMessage = XInternAtom(display, "WM_DELETE_WINDOW", False);
-	XSetWMProtocols(display, window, &wmDeleteMessage, 1);
+	window_infos = (struct window_info**)malloc(sizeof(void*) * 256);
 
-	XMapWindow(display, window);
+	running = true;
 
-	image_buffer = (unsigned int*)malloc(max_width * max_height * sizeof(unsigned int));
-
-	ximage = XCreateImage(display, DefaultVisual(display, screen), DefaultDepth(display, screen), ZPixmap, 0, (char*)image_buffer, max_width, max_height, 32, 0);
-
-	window_state.window_width = initial_width;
-	window_state.window_height = initial_height;
-
-	double startTime = get_time();
-
-	void* mainthread = create_thread(Entry, NULL);
+	void* mainthread = create_thread(Entry_thread_function, NULL);
 
 	WindowControl();
 
 	join_thread(mainthread);
 
-	XDestroyImage(ximage);
 	XCloseDisplay(display);
 
 	return 0;
 }
-
 
 #endif 
 
