@@ -42,12 +42,11 @@ struct window_state* create_window(int posx, int posy, int width, int height, un
 
 void Entry();
 
-#include <stdio.h>
-#include <stdlib.h>
-
 #if defined(_WIN64)
 
 #include <windows.h>
+#include <stdio.h>
+#include <stdlib.h>
 
 #define KEY_SPACE VK_SPACE
 #define KEY_SHIFT VK_SHIFT
@@ -407,6 +406,8 @@ int WINAPI WinMain(
 #include <pthread.h>
 #include <unistd.h>
 #include <sys/time.h>
+#include <stdlib.h>
+#include <stdio.h>
 
 #define KEY_SPACE XK_space
 #define KEY_SHIFT XK_Shift_L
@@ -421,9 +422,14 @@ int WINAPI WinMain(
 
 struct window_info {
 	Window window;
+	XImage* image;
+	unsigned int* pixels;
 	bool active;
 	struct window_state state;
 };
+
+int display_width;
+int display_height;
 
 struct window_info** window_infos;
 
@@ -473,11 +479,15 @@ void set_console_cursor_position(int x, int y) {
 	// X11 does not have direct console cursor manipulation; this is a placeholder
 }
 
-void draw_to_window(struct window_state* ws, unsigned int* buffer, int width, int height) {
+void draw_to_window(struct window_state* state, unsigned int* buffer, int width, int height) {
+	if (is_window_active(state) == false) return;
+	for (int i = 0; i < width && i < display_width; i++) {
+		for (int j = 0; j < height && j < display_height; j++) {
+			((struct window_info*) state->window_handle)->pixels[i + display_width * (height - j - 1)] = buffer[i + width * j];
+		}
+	}
 
-	XImage* image = XCreateImage(display, DefaultVisual(display, screen), DefaultDepth(display, screen), ZPixmap, 0, (char*)buffer, width, height, 32, 0);
-	XPutImage(display, ((struct window_info*) ws->window_handle)->window, DefaultGC(display, screen), image, 0, 0, 0, 0, width, height);
-	XDestroyImage(image);
+	XPutImage(display, ((struct window_info*) state->window_handle)->window, DefaultGC(display, screen), ((struct window_info*) state->window_handle)->image, 0, 0, 0, 0, width, height);
 }
 
 bool is_window_active(struct window_state* state) {
@@ -505,7 +515,7 @@ struct point2d_int get_mouse_cursor_position(struct window_state* state) {
 
 	XQueryPointer(display, ((struct window_info*)state->window_handle)->window, &root, &child, &root_x, &root_y, &win_x, &win_y, &mask);
 
-	struct point2d_int pos = {win_x, state->window_height - win_y - 1}; 
+	struct point2d_int pos = {win_x - 2, state->window_height - win_y + 1}; 
 
 	return pos;
 }
@@ -524,8 +534,14 @@ struct window_state* create_window(int posx, int posy, int width, int height, un
 
 	Window window = XCreateSimpleWindow(display, RootWindow(display, screen), posx, posy, width, height, 1, BlackPixel(display, screen), WhitePixel(display, screen));
 
+	unsigned int* pixels = malloc(display_width * display_height * sizeof(unsigned int));
+
+	XImage* image = XCreateImage(display, DefaultVisual(display, screen), DefaultDepth(display, screen), ZPixmap, 0, (char*)pixels, display_width, display_height, 32, 0);
+
 	*window_infos[window_infos_length] = (struct window_info) {
 		window,
+		image,
+		pixels,
 		true,
 		(struct window_state) {
 			window_infos[window_infos_length], width, height
@@ -553,6 +569,7 @@ void close_window(struct window_state* state) {
 
 	for (; index < window_infos_length && window_infos[index] != state->window_handle; index++);
 
+	XDestroyImage(window_infos[index]->image);
 	free(window_infos[index]);
 
 	window_infos_length--;
@@ -580,10 +597,11 @@ void WindowControl() {
 
 			for(; index < window_infos_length && window_infos[index]->window != event.xany.window; index++);
 			
-			switch (event.type) {
+			if(window_infos[index]->active) {
+				switch (event.type) {
 				case ConfigureNotify:
-					window_infos[index]->state.window_width = event.xconfigure.width;
-					window_infos[index]->state.window_height = event.xconfigure.height;
+					window_infos[index]->state.window_width = (event.xconfigure.width > display_width ? display_width : event.xconfigure.width);
+					window_infos[index]->state.window_height = (event.xconfigure.height > display_height ? display_height : event.xconfigure.height);
 					break;
 				case ClientMessage:
 					if ((Atom)event.xclient.data.l[0] == wm_delete_window) {
@@ -591,6 +609,7 @@ void WindowControl() {
 						XDestroyWindow(display, window_infos[index]->window);
 					}
 
+			}
 			}
 
 			msg_check = false;
@@ -618,6 +637,9 @@ int main(int argc, char* argv[]) {
 	}
 
 	screen = DefaultScreen(display);
+
+	display_width = DisplayWidth(display, screen);
+	display_height = DisplayHeight(display, screen);
 
 	wm_delete_window = XInternAtom(display, "WM_DELETE_WINDOW", False);
 

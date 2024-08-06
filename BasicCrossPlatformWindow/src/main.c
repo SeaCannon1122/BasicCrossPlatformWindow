@@ -22,7 +22,7 @@ void Entry() {
 			width = w1->window_width;
 			free(pixels);
 			pixels = malloc(sizeof(unsigned int) * height * width);
-			for (int i = 0; i < height * width; i++) pixels[i] = 0x12345 * i;
+			for (int i = 0; i < height * width; i++) pixels[i] = 0x12345;
 		}
 
 		struct point2d_int p = get_mouse_cursor_position(w1);
