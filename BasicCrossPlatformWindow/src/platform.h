@@ -49,12 +49,25 @@ void Entry();
 #include <stdlib.h>
 
 #define KEY_SPACE VK_SPACE
-#define KEY_SHIFT VK_SHIFT
+#define KEY_SHIFT_L VK_SHIFT
+#define KEY_SHIFT_R VK_RSHIFT
+#define KEY_CONTROL_L VK_CONTROL
+#define KEY_CONTROL_R VK_RCONTROL
+#define KEY_ALT_L VK_LMENU
+#define KEY_ALT_R VK_RMENU
+#define KEY_ESCAPE VK_ESCAPE
+#define KEY_BACKSPACE VK_BACK
+#define KEY_TAB VK_TAB
+#define KEY_ENTER VK_RETURN
+#define KEY_CAPS_LOCK VK_CAPITAL
+#define KEY_MINUS VK_OEM_MINUS
+#define KEY_PLUS VK_OEM_PLUS
 #define KEY_ARROW_LEFT VK_LEFT
 #define KEY_ARROW_RIGHT VK_RIGHT
 #define KEY_ARROW_UP VK_UP
 #define KEY_ARROW_DOWN VK_DOWN
 #define KEY_MOUSE_LEFT VK_LBUTTON
+#define KEY_MOUSE_MIDDLE VK_MBUTTON
 #define KEY_MOUSE_RIGHT VK_RBUTTON
 
 struct window_info {
@@ -373,6 +386,7 @@ int WINAPI WinMain(
 	RegisterClassW(&wc);
 
 	AllocConsole();
+	hide_console_window();
 
 	FILE* fstdout;
 	freopen_s(&fstdout, "CONOUT$", "w", stdout);
@@ -414,8 +428,6 @@ int WINAPI WinMain(
 #define KEY_SHIFT_R XK_Shift_R
 #define KEY_CONTROL_L XK_Control_L
 #define KEY_CONTROL_R XK_Control_R
-#define KEY_ALT_L XK_Alt_L
-#define KEY_ALT_R XK_Alt_R
 #define KEY_ESKAPE XK_Escape
 #define KEY_BACKSPACE XK_BackSpace
 #define KEY_ALT_L XK_Alt_L
@@ -423,13 +435,8 @@ int WINAPI WinMain(
 #define KEY_TAB XK_Tab
 #define KEY_ENTER XK_Return
 #define KEY_CAPS_LOCK XK_Caps_Lock
-#define KEY_NUMPAD_ENTER XK_KP_Enter
-#define KEY_NUMPAD_ARROW_UP XK_KP_Up
-#define KEY_NUMPAD_ARROW_DOWN XK_KP_Down
-#define KEY_NUMPAD_ARROW_LEFT XK_KP_Left
-#define KEY_NUMPAD_ARROW_RIGHT XK_KP_Right
-#define KEY_NUMPAD_MINUS XK_KP_Subtract
-#define KEY_NUMPAD_PLUS XK_KP_Add
+#define KEY_MINUS XK_KP_Subtract
+#define KEY_PLUS XK_KP_Add
 #define KEY_ARROW_LEFT XK_Left
 #define KEY_ARROW_RIGHT XK_Right
 #define KEY_ARROW_UP XK_Up
