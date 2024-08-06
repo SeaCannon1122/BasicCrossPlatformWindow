@@ -4,14 +4,13 @@
 
 void Entry() {
 
-	int width = 200;
-	int height = 100;
+	int width = 500;
+	int height = 300;
 
+	struct window_state* w2 = create_window(300, 200, 700, 700, "NAME");
 	struct window_state* w1 = create_window(100, 100, width, height, "NAME");
 
 	unsigned int* pixels = malloc(sizeof(unsigned int) * w1->window_height * w1->window_width);
-
-	draw_to_window(w1, pixels, width, height);
 
 	bool console_shown = true;
 
@@ -27,9 +26,7 @@ void Entry() {
 
 		struct point2d_int p = get_mouse_cursor_position(w1);
 
-		printf("x: %d y: %d\n", p.x, p.y);
-
-		if (p.x >= 0 && p.x < width && p.y >= 0 && p.y < height) pixels[p.x + width * p.y] = 0xff0000;
+		if (p.x >= 0 && p.x < width && p.y >= 0 && p.y < height && get_key_state(KEY_MOUSE_LEFT) & 0b1) pixels[p.x + width * p.y] = 0xff0000;
 
 		draw_to_window(w1, pixels, width, height);
 
@@ -50,7 +47,7 @@ void Entry() {
 	}
 
 	close_window(w1);
-	
+	close_window(w2);
 
 	return;
 

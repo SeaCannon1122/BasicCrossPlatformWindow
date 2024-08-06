@@ -410,12 +410,32 @@ int WINAPI WinMain(
 #include <stdio.h>
 
 #define KEY_SPACE XK_space
-#define KEY_SHIFT XK_Shift_L
+#define KEY_SHIFT_L XK_Shift_L
+#define KEY_SHIFT_R XK_Shift_R
+#define KEY_CONTROL_L XK_Control_L
+#define KEY_CONTROL_R XK_Control_R
+#define KEY_ALT_L XK_Alt_L
+#define KEY_ALT_R XK_Alt_R
+#define KEY_ESKAPE XK_Escape
+#define KEY_BACKSPACE XK_BackSpace
+#define KEY_ALT_L XK_Alt_L
+#define KEY_ALT_R XK_Alt_R
+#define KEY_TAB XK_Tab
+#define KEY_ENTER XK_Return
+#define KEY_CAPS_LOCK XK_Caps_Lock
+#define KEY_NUMPAD_ENTER XK_KP_Enter
+#define KEY_NUMPAD_ARROW_UP XK_KP_Up
+#define KEY_NUMPAD_ARROW_DOWN XK_KP_Down
+#define KEY_NUMPAD_ARROW_LEFT XK_KP_Left
+#define KEY_NUMPAD_ARROW_RIGHT XK_KP_Right
+#define KEY_NUMPAD_MINUS XK_KP_Subtract
+#define KEY_NUMPAD_PLUS XK_KP_Add
 #define KEY_ARROW_LEFT XK_Left
 #define KEY_ARROW_RIGHT XK_Right
 #define KEY_ARROW_UP XK_Up
 #define KEY_ARROW_DOWN XK_Down
 #define KEY_MOUSE_LEFT 0x1234
+#define KEY_MOUSE_MIDDLE 0x1235
 #define KEY_MOUSE_RIGHT 0x1236
 
 //char get_key_state(int key);
@@ -444,7 +464,9 @@ bool msg_check = false;
 bool window_infos_reorder = false;
 bool running;
 
-bool keyStates[256] = { 0 };
+bool keyStates[256 * 256] = { false };
+
+bool mouseButtons[3] = { false, false, false };
 
 void show_console_window() {
 	return;
@@ -495,6 +517,26 @@ bool is_window_active(struct window_state* state) {
 }
 
 char get_key_state(int key) {
+
+	char key_state = 0;
+
+	if(key == KEY_MOUSE_LEFT || key == KEY_MOUSE_MIDDLE || key == KEY_MOUSE_RIGHT) {
+		
+		Window root = DefaultRootWindow(display);
+		Window root_return, child_return;
+		int root_x, root_y, win_x, win_y;
+		unsigned int mask_return;
+		XQueryPointer(display, root, &root_return, &child_return, &root_x, &root_y, &win_x, &win_y, &mask_return);
+		
+		if(mask_return & (key == KEY_MOUSE_LEFT ? Button1Mask : (key == KEY_MOUSE_MIDDLE ? Button2Mask : Button3Mask))) key_state = 0b1;
+
+		if (key_state != mouseButtons[(key == KEY_MOUSE_LEFT ? 0 : (key == KEY_MOUSE_MIDDLE ? 1 : 2))]) key_state |= 0b10;
+
+		mouseButtons[(key == KEY_MOUSE_LEFT ? 0 : (key == KEY_MOUSE_MIDDLE ? 1 : 2))] = key_state & 0b1;
+
+		return key_state;
+	}
+
 	char keys[32];
 	XQueryKeymap(display, keys);
 
@@ -504,10 +546,15 @@ char get_key_state(int key) {
 	int byteIndex = keycode / 8;
 	int bitIndex = keycode % 8;
 
-	return (keys[byteIndex] & (1 << bitIndex) ? 0b0001 : 0b0000);
+	if(keys[byteIndex] & (1 << bitIndex)) key_state = 0b1;
+	if(key_state != keyStates[key]) key_state |= 0b10;
+	keyStates[key] = key_state & 0b1;
+
+	return key_state;
 }
 
 struct point2d_int get_mouse_cursor_position(struct window_state* state) {
+	if (is_window_active(state) == false) return (struct point2d_int) {-1, -1};
 	Window root, child;
 	int root_x, root_y;
 	int win_x, win_y;
@@ -559,7 +606,6 @@ struct window_state* create_window(int posx, int posy, int width, int height, un
 
 void close_window(struct window_state* state) {
 	if (is_window_active(state)) XDestroyWindow(display, ((struct window_info*) state->window_handle)->window);
-	while (((struct window_info*)state->window_handle)->active) sleep_for_ms(1);
 
 	window_infos_reorder = true;
 
@@ -585,7 +631,7 @@ void WindowControl() {
 	XEvent event;
 	while (running) {
 
-		while (XPending(display)) {
+		while (XPending(display) && running) {
 
 			msg_check = true;
 
